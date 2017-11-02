@@ -85,13 +85,12 @@ public class ConcatAvroFiles extends Configured implements Tool {
 
         if (status != null) {
             System.out.println("Found some files...");
-            for (int i = 0; i < status.length; ++i) {
-                if (!status[i].isDirectory()) {
-                    Path hdfsJarPath = new Path(status[i].getPath().toUri().getPath());
+            for (FileStatus statu : status)
+                if (!statu.isDirectory()) {
+                    Path hdfsJarPath = new Path(statu.getPath().toUri().getPath());
                     System.out.println("Adding " + hdfsJarPath.getName());
                     job.addArchiveToClassPath(hdfsJarPath);
                 }
-            }
         } else {
             System.out.println("Didn't find any jar files...");
         }
@@ -99,8 +98,6 @@ public class ConcatAvroFiles extends Configured implements Tool {
 
     /**
      * 
-     * @param args  Usage: ConcatAvroFiles <input path> <output path> <schema file>
-     * @throws Exception 
      */
     
     public static void printClassPath() {

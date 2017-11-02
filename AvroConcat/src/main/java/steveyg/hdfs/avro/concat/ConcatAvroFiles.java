@@ -1,39 +1,37 @@
-package steveyg.hdfs.avroappender;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URLClassLoader;
-import java.net.URL;
-
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapreduce.lib.input.FileSplit;
-import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.util.Tool;
-import org.apache.hadoop.util.ToolRunner;
+package steveyg.hdfs.avro.concat;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.mapreduce.AvroJob;
 import org.apache.avro.mapred.AvroKey;
-import org.apache.avro.mapreduce.AvroKeyInputFormat;
 import org.apache.avro.mapred.AvroValue;
+import org.apache.avro.mapreduce.AvroJob;
+import org.apache.avro.mapreduce.AvroKeyInputFormat;
 import org.apache.avro.mapreduce.AvroKeyOutputFormat;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.MRJobConfig;
-import org.apache.hadoop.mapreduce.Mapper.Context;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 
 public class ConcatAvroFiles extends Configured implements Tool {
 
-    public static class MapIt extends Mapper<AvroKey<GenericData.Record>, NullWritable, Text , AvroValue<GenericData.Record>> {
+    public static class MapIt extends Mapper<AvroKey<GenericData.Record>, NullWritable, Text, AvroValue<GenericData.Record>> {
 
         private Text fname = new Text();
         private AvroValue<GenericData.Record> valout;
@@ -45,7 +43,7 @@ public class ConcatAvroFiles extends Configured implements Tool {
             FileSplit fSplit = (FileSplit) context.getInputSplit();
             String fileName = fSplit.getPath().getName();
             fname.set(fileName);
-            
+
             valout = new AvroValue<>(key.datum());
             context.write(fname, valout);
         }
@@ -62,7 +60,7 @@ public class ConcatAvroFiles extends Configured implements Tool {
             int counter = 0;
             for (AvroValue<GenericData.Record> val : values) {
                 keyout = new AvroKey<>(val.datum());
-                context.write(keyout, nw );
+                context.write(keyout, nw);
             }
         }
     }
@@ -97,9 +95,9 @@ public class ConcatAvroFiles extends Configured implements Tool {
     }
 
     /**
-     * 
+     *
      */
-    
+
     public static void printClassPath() {
         ClassLoader cl = ClassLoader.getSystemClassLoader();
         URL[] urls = ((URLClassLoader) cl).getURLs();
@@ -109,17 +107,16 @@ public class ConcatAvroFiles extends Configured implements Tool {
         }
         System.out.println("classpath END");
     }
-    
+
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new Configuration(), new ConcatAvroFiles(), args);
         System.exit(res);
     }
 
     /**
-     * 
-     * @param args  Usage: ConcatAvroFiles <input path> <output path> <schema file>
-     * @return      0 or -1 success/fail
-     * @throws Exception 
+     * @param args Usage: ConcatAvroFiles <input path> <output path> <schema file>
+     * @return 0 or -1 success/fail
+     * @throws Exception
      */
     @Override
     public int run(String[] args) throws Exception {
@@ -152,7 +149,7 @@ public class ConcatAvroFiles extends Configured implements Tool {
         //classpath before all the default ones.
         //This allows you to use a newer version of Avro (for instance)
         conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_USER_CLASSPATH_FIRST, true);
-        
+
         Job job = Job.getInstance(conf);
         job.setJobName("StevesAvroThing");
         FileSystem fs = FileSystem.get(conf);
@@ -169,20 +166,20 @@ public class ConcatAvroFiles extends Configured implements Tool {
         //Can't honestly remember what this does!
         job.setJarByClass(ConcatAvroFiles.class);
         printClassPath();
-        
+
         //Input format will be an Avro Key
         job.setInputFormatClass(AvroKeyInputFormat.class);
         //Output format also an Avro Key
         job.setOutputFormatClass(AvroKeyOutputFormat.class);
-        
+
         //Set the class for the output mapper key
         job.setMapOutputKeyClass(Text.class);
         //Set the class for the output mapper value
         job.setMapOutputValueClass(AvroValue.class);
-        
+
         //Go get the schema file
         Schema schema = getSchema(fs, schemaPath);
-        
+
         //Set the  schema for the input keys
         AvroJob.setInputKeySchema(job, schema);
         //Set the schema for the output values from the mapper

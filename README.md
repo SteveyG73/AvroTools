@@ -8,6 +8,6 @@ Recursively reads an input directory of avro files that have an externally speci
 
 Usage:
 
-`yarn jar AvroAppender.jar ConcatAvroFiles <inpath> <outpath> <schema.avsc>`
+`yarn jar AvroConcat.jar ConcatAvroFiles <inpath> <outpath> <schema.avsc>`
 
 Use the hive table to examine the data in the new Avro file.

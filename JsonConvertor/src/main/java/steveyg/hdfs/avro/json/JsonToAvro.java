@@ -5,9 +5,20 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.JsonDecoder;
+import org.apache.avro.mapred.AvroKey;
+import org.apache.avro.mapred.AvroOutputFormat;
 import org.apache.avro.mapred.AvroValue;
+import org.apache.avro.mapreduce.AvroJob;
+import org.apache.avro.mapreduce.AvroKeyOutputFormat;
+import org.apache.avro.mapreduce.AvroKeyValueOutputFormat;
+import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.Mapper;
 import steveyg.hdfs.utils.MapReduceUtils;
@@ -33,21 +44,45 @@ public class JsonToAvro extends Configured implements Tool{
     private String inPath;
     private String schemaPath;
 
-    static class JsonMapper extends Mapper<Text, NullWritable, Text, AvroValue<GenericData.Record>> {
+    static class JsonMapper extends Mapper<LongWritable, Text, Text, AvroValue<GenericData.Record>> {
 
         private AvroValue<GenericData.Record> avroOutVal;
         private Text keyText;
         private Schema schema;
+
         @Override
-        protected void map(Text key, NullWritable value, Context context) throws IOException, InterruptedException {
+        protected void setup(Context context) throws IOException, InterruptedException {
+            super.setup(context);
             schema = new Schema.Parser().parse(context.getConfiguration().get("schema"));
-            JsonDecoder json = DecoderFactory.get().jsonDecoder(schema, key.toString());
+        }
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+
+            JsonDecoder json = DecoderFactory.get().jsonDecoder(schema, value.toString());
             DatumReader<GenericData.Record> reader = new GenericDatumReader<>(schema);
             GenericData.Record datum = reader.read(null,json);
 
             keyText = new Text(Integer.toString(datum.hashCode()));
             avroOutVal = new AvroValue<>(datum);
 
+            context.write(keyText,avroOutVal);
+        }
+    }
+
+
+    public static class ReduceIt extends Reducer<Text, AvroValue<GenericData.Record>, AvroKey<GenericData.Record>, NullWritable> {
+
+        private AvroKey<GenericData.Record> keyOut;
+        private final NullWritable nw = NullWritable.get();
+
+        @Override
+        protected void reduce(Text key, Iterable<AvroValue<GenericData.Record>> values, Context context) throws IOException, InterruptedException {
+            int counter = 0;
+            for (AvroValue<GenericData.Record> val : values) {
+                keyOut = new AvroKey<>(val.datum());
+                context.write(keyOut, nw);
+            }
         }
     }
 
@@ -93,8 +128,38 @@ public class JsonToAvro extends Configured implements Tool{
         Schema schema = getSchema(fs, schemaPath);
         config.set("schema", schema.toString());
         Job job = Job.getInstance(config);
+        job.setJobName("StevesJSONtoAvroConvertor");
+        job.setJarByClass(JsonToAvro.class);
 
-        return 0;
+        //MapReduceUtils.addJars(fs, job, "/user/sgar241/AvroAppender/lib");
+        FileInputFormat.addInputPaths(job, inPath);
+        FileInputFormat.setInputDirRecursive(job, true);
+
+        FileOutputFormat.setOutputPath(job, outPath);
+        job.setMapperClass(JsonMapper.class);
+        job.setReducerClass(ReduceIt.class);
+        job.setInputFormatClass(TextInputFormat.class);
+        job.setOutputFormatClass(AvroKeyOutputFormat.class);
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(AvroValue.class);
+        job.setOutputKeyClass(AvroKey.class);
+
+
+
+        AvroJob.setMapOutputValueSchema(job, schema);
+        AvroJob.setOutputKeySchema(job, schema);
+
+
+        job.setNumReduceTasks(1);
+
+        //Check to see if the output path already exists and if it does
+        //delete it.
+        if (fs.exists(outPath)) {
+            fs.delete(outPath, true);
+        }
+
+        return job.waitForCompletion(true) ? 0 : 1;
+
     }
 
     public static void main(String[] args) throws Exception {
